@@ -1,0 +1,347 @@
+import React, { useState } from 'react';
+import { useApp } from '../context/AppContext';
+import { X, Sparkles, AlertCircle, Coins, CreditCard, Smartphone, Check, ArrowRight, Dices } from 'lucide-react';
+
+export const PaymentGateway: React.FC = () => {
+  const { 
+    activeModal, 
+    setActiveModal, 
+    currentUser, 
+    updateWallet, 
+    purchaseTicket, 
+    results,
+    t,
+    language
+  } = useApp();
+
+  const [ticketNumber, setTicketNumber] = useState(() => generateRandomTicket());
+  const [selectedDraw, setSelectedDraw] = useState(() => {
+    const upcoming = results.find((r) => r.status === 'Upcoming');
+    return upcoming ? upcoming.drawDate : '2026-07-16';
+  });
+
+  const [paymentStep, setPaymentStep] = useState<'details' | 'processing' | 'success'>('details');
+  const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'card' | 'bkash' | 'promptpay'>('wallet');
+  const [depositAmount, setDepositAmount] = useState('500');
+  const [formError, setFormError] = useState('');
+
+  if (activeModal !== 'buyTicket') return null;
+
+  function generateRandomTicket() {
+    return Array.from({ length: 6 }, () => Math.floor(Math.random() * 10)).join('');
+  }
+
+  const handleRandomize = () => {
+    setTicketNumber(generateRandomTicket());
+    setFormError('');
+  };
+
+  const handleTicketNoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, '');
+    if (val.length <= 6) {
+      setTicketNumber(val);
+      setFormError('');
+    }
+  };
+
+  const handleBuy = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+
+    if (ticketNumber.length !== 6) {
+      setFormError('Please input a valid 6-digit number.');
+      return;
+    }
+
+    if (!currentUser) {
+      setActiveModal('login');
+      return;
+    }
+
+    // Check balance if method is wallet
+    if (selectedMethod === 'wallet' && currentUser.walletBalance < 80) {
+      setFormError('Insufficient balance in your GLO wallet. Please deposit funds first.');
+      return;
+    }
+
+    setPaymentStep('processing');
+
+    setTimeout(() => {
+      // Execute simulated purchase
+      const purchaseRes = purchaseTicket(ticketNumber, selectedDraw);
+      if (purchaseRes.success) {
+        setPaymentStep('success');
+      } else {
+        setFormError(purchaseRes.error || 'Failed to complete transaction.');
+        setPaymentStep('details');
+      }
+    }, 1500);
+  };
+
+  const handleDeposit = () => {
+    if (!currentUser) return;
+    const amount = parseFloat(depositAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    
+    updateWallet(amount);
+    setFormError('');
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-2xl overflow-hidden flex flex-col relative max-h-[90vh]">
+        
+        {/* Header bar */}
+        <div className="p-5 border-b border-slate-50 flex items-center justify-between flex-shrink-0">
+          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Coins className="h-4.5 w-4.5 text-amber-500 animate-pulse" />
+            <span>{t('buyTicketTitle')}</span>
+          </h3>
+          <button
+            onClick={() => {
+              setActiveModal(null);
+              setPaymentStep('details');
+            }}
+            className="p-1 rounded-full text-slate-400 hover:bg-slate-50 transition-colors"
+            id="close-buy-ticket-btn"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Step details body */}
+        <div className="p-6 overflow-y-auto flex-1">
+          {paymentStep === 'details' && (
+            <form onSubmit={handleBuy} className="space-y-5">
+              
+              {/* Ticket selector block */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl relative space-y-3 shadow-inner">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                  {t('chooseDigits')}
+                </label>
+                
+                <div className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    value={ticketNumber}
+                    onChange={handleTicketNoChange}
+                    placeholder="e.g., 123456"
+                    className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 tracking-widest text-center focus:border-amber-500 focus:ring-1 focus:ring-amber-500 placeholder-slate-350"
+                    maxLength={6}
+                    id="buy-ticket-number-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRandomize}
+                    className="p-3 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl transition-colors shadow-sm"
+                    title="Generate Random Ticket"
+                    id="randomize-ticket-btn"
+                  >
+                    <Dices className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Draw Selection */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Target Drawing Date
+                </label>
+                <select
+                  value={selectedDraw}
+                  onChange={(e) => setSelectedDraw(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:border-amber-500"
+                  id="buy-ticket-draw-select"
+                >
+                  {results.filter(r => r.status === 'Upcoming').map((r) => (
+                    <option key={r.id} value={r.drawDate}>
+                      {r.drawDate} ({r.drawNumber})
+                    </option>
+                  ))}
+                  {results.filter(r => r.status === 'Drawn').map((r) => (
+                    <option key={r.id} value={r.drawDate} disabled>
+                      {r.drawDate} ({r.drawNumber}) — Closed
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Wallet Deposit Option when User is Logged In */}
+              {currentUser ? (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-150 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                    <span className="flex items-center gap-1">
+                      <Coins className="h-4 w-4 text-amber-500" />
+                      GLO Wallet Balance
+                    </span>
+                    <span className="text-amber-600">{currentUser.walletBalance.toLocaleString()} ฿</span>
+                  </div>
+
+                  {currentUser.walletBalance < 80 && (
+                    <div className="pt-2 border-t border-slate-200/60 flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={depositAmount}
+                        onChange={(e) => setDepositAmount(e.target.value)}
+                        placeholder="Amount"
+                        className="w-24 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-800"
+                        id="wallet-deposit-input"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleDeposit}
+                        className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded text-xs transition-colors"
+                        id="wallet-deposit-btn"
+                      >
+                        Deposit Funds
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl text-center">
+                  <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+                    Please log in to finalize your purchase.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal('login')}
+                    className="mt-2 text-xs font-extrabold text-amber-700 underline"
+                  >
+                    Log In Now
+                  </button>
+                </div>
+              )}
+
+              {/* Error log */}
+              {formError && (
+                <p className="text-xs text-red-500 font-bold flex items-center gap-1 justify-center bg-red-50 p-2.5 rounded-xl border border-red-100">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{formError}</span>
+                </p>
+              )}
+
+              {/* Payment Methods */}
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                  {t('paymentMethod')}
+                </label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('wallet')}
+                    className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between gap-1.5 transition-all ${selectedMethod === 'wallet' ? 'border-amber-500 bg-amber-500/5 text-amber-700 shadow-inner' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Coins className="h-4 w-4 text-amber-500" />
+                      GLO Wallet
+                    </span>
+                    {selectedMethod === 'wallet' && <Check className="h-3.5 w-3.5 text-amber-500" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('card')}
+                    className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between gap-1.5 transition-all ${selectedMethod === 'card' ? 'border-amber-500 bg-amber-500/5 text-amber-700 shadow-inner' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <CreditCard className="h-4 w-4 text-slate-500" />
+                      Card Payment
+                    </span>
+                    {selectedMethod === 'card' && <Check className="h-3.5 w-3.5 text-amber-500" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('bkash')}
+                    className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between gap-1.5 transition-all ${selectedMethod === 'bkash' ? 'border-amber-500 bg-amber-500/5 text-amber-700 shadow-inner' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Smartphone className="h-4 w-4 text-pink-500" />
+                      bKash / Nagad
+                    </span>
+                    {selectedMethod === 'bkash' && <Check className="h-3.5 w-3.5 text-amber-500" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('promptpay')}
+                    className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between gap-1.5 transition-all ${selectedMethod === 'promptpay' ? 'border-amber-500 bg-amber-500/5 text-amber-700 shadow-inner' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Smartphone className="h-4 w-4 text-blue-500" />
+                      PromptPay
+                    </span>
+                    {selectedMethod === 'promptpay' && <Check className="h-3.5 w-3.5 text-amber-500" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit Purchase Trigger */}
+              <button
+                type="submit"
+                className="w-full py-3.5 bg-slate-900 hover:bg-amber-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
+                id="buy-ticket-submit-btn"
+              >
+                <span>{t('btnProceedPayment')} (80 ฿)</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+
+            </form>
+          )}
+
+          {paymentStep === 'processing' && (
+            <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="h-12 w-12 rounded-full border-4 border-amber-500 border-t-transparent animate-spin" />
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-800">Processing Escrow Transaction</h4>
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed max-w-xs mx-auto">
+                  Verifying GLO Ledger blocks and certifying ticket number allocation securely...
+                </p>
+              </div>
+            </div>
+          )}
+
+          {paymentStep === 'success' && (
+            <div className="py-8 flex flex-col items-center justify-center text-center space-y-4 animate-fade-in">
+              <div className="h-14 w-14 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-500 flex items-center justify-center animate-bounce">
+                <Check className="h-8 w-8" />
+              </div>
+              
+              <div>
+                <h4 className="text-base font-extrabold text-slate-800">{t('paymentSuccess')}</h4>
+                <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                  Ticket <strong className="font-mono text-slate-800 tracking-widest">{ticketNumber}</strong> has been secured for draw <strong className="text-slate-800">{selectedDraw}</strong>.
+                </p>
+              </div>
+
+              <div className="pt-4 flex flex-col gap-2 w-full">
+                <a
+                  href="#dashboard"
+                  onClick={() => {
+                    setActiveModal(null);
+                    setPaymentStep('details');
+                  }}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  View My Tickets
+                </a>
+                <button
+                  onClick={() => {
+                    setPaymentStep('details');
+                    setTicketNumber(generateRandomTicket());
+                  }}
+                  className="w-full py-2.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all"
+                >
+                  Buy Another Ticket
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+};
